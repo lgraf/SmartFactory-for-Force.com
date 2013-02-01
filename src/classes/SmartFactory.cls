@@ -40,32 +40,32 @@ public with sharing class SmartFactory {
 		return createSObject(objectType, false);
 	}
 	
+	public static SObject createSObject(String objectType, boolean cascade) {
+		return createSObject(objectTypeFor( objectType ), cascade, 0);
+	}
+	
 	public static List<SObject> createSObjectList(String objectType, boolean cascade, Integer numberOfObjects) {
-		
+		Schema.sObjectType token = objectTypeFor(objectType);
 		List<SObject> sos = new List<SObject>();
 		for( Integer i=0; i<numberOfObjects; i++ )
-			sos.add(createSObject(objectType, cascade, i));
-		return sos;  
+			sos.add(createSObject(token, cascade, i));
+		return sos;
 	}
-
-	public static SObject createSObject(String objectType, boolean cascade, Integer counter) {
-		System.debug('Creating ' + objectType);
+	
+	static SObject createSObject(Schema.sObjectType token, boolean cascade, Integer counter) {
+		SObject obj = token.newSObject();
+		for (Schema.SObjectField field : fieldMapFor(token.getDescribe().getName()).values()) {
+			setFieldValue(obj, field, cascade, counter);
+		}
+		return obj;
+	}
+	
+	static Schema.sObjectType objectTypeFor(String objectType) {
 		Schema.sObjectType token = GlobalDescribe.get(objectType);
 		if (token == null) {
 			throw new UnsupportedObjectTypeException('Unsupported ObjectType ' + objectType);
 		}
-		
-		SObject obj = token.newSObject();		
-		
-		for (Schema.SObjectField field : fieldMapFor(objectType).values()) {
-			setFieldValue(obj, field, cascade, counter);
-		}
-		
-		return obj;
-	}
-	
-	public static SObject createSObject(String objectType, boolean cascade) {
-		return createSObject(objectType, cascade, 1);
+		return token;
 	}
 	
 	/**
@@ -76,18 +76,12 @@ public with sharing class SmartFactory {
 		@param objectType sobject api name for ex. Account
 		@returns FieldMap [Key:FieldName,Value:Schema.SObjectField]
 	*/
-	public static  Map<String, Schema.SObjectField> fieldMapFor(String objectType) {
-		Map<String, Schema.SObjectField> fieldMap = null;
-		String normalizedObjectType = objectType.toLowerCase();
-		
-		if (FieldMapCache.containsKey(normalizedObjectType)) {
-			fieldMap = FieldMapCache.get(normalizedObjectType);
-		} else {
+	public static Map<String, Schema.SObjectField> fieldMapFor(String objectType) {
+		Map<String,Schema.SObjectField> fieldMap = FieldMapCache.get(objectType.toLowerCase());
+		if (null == fieldMap) {
 			fieldMap = GlobalDescribe.get(objectType).getDescribe().fields.getMap();
-			// cache it for next use
-			FieldMapCache.put(normalizedObjectType, fieldMap);
+			FieldMapCache.put(objectType.toLowerCase(), fieldMap);
 		}
-		
 		return fieldMap;
 	}
 	
@@ -108,24 +102,21 @@ public with sharing class SmartFactory {
 	}
 	
 	static boolean isExcludedField(SObject obj, Schema.DescribeFieldResult fieldDescribe) {
-		set<String> fields = ExcludedFields.get(obj.getSObjectType().getDescribe().getName());
-		return fields == null ? false : fields.contains(fieldDescribe.getName());
+		return null == ExcludedFields.get(obj.getSObjectType().getDescribe().getName()) ? 
+			false : 
+			ExcludedFields.get(obj.getSObjectType().getDescribe().getName()).contains(fieldDescribe.getName());
 	}
 	
 	static boolean isIncludedField(SObject obj, Schema.DescribeFieldResult fieldDescribe) {
-		set<String> fields = includedFields.get(obj.getSObjectType().getDescribe().getName());
-		return fields == null ? false : fields.contains(fieldDescribe.getName());
+		return null == includedFields.get(obj.getSObjectType().getDescribe().getName()) ?
+			false : 
+			includedFields.get(obj.getSObjectType().getDescribe().getName()).contains(fieldDescribe.getName());
 	}
 	
 	static boolean isPersonAccountField(Schema.DescribeFieldResult fieldDescribe) {
-                Boolean isPersonAccountEnabled = fieldMapFor('Account').get('IsPersonAccount') != null;
-                set<string> skipPersonAccountFields = new set<string>{ 'Salutation' };
-            
-                Boolean CustomPerson = fieldDescribe.isCustom() && fieldDescribe.getName().endsWith('pc');
-                Boolean StandardPerson = !fieldDescribe.isCustom() && fieldDescribe.getName().startsWith('Person');
-		
-                return CustomPerson || StandardPerson || 
-                    (isPersonAccountEnabled && skipPersonAccountFields.contains(fieldDescribe.getName()));
+        return (fieldDescribe.isCustom() && fieldDescribe.getName().endsWith('pc')) ||
+         	   (!fieldDescribe.isCustom() && fieldDescribe.getName().startsWith('Person')) || 
+               (fieldMapFor('Account').get('IsPersonAccount') != null && new set<string>{ 'Salutation' }.contains(fieldDescribe.getName()));
 	}
 	
 	static void setFieldValue(SObject obj, Schema.SObjectField field, boolean cascade) {

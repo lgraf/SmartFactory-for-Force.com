@@ -49,9 +49,9 @@ private class SmartFactory_Test {
 		}
 	}
 	
-	static testMethod void creating401UniqueRecords() {
+	static testMethod void creating201UniqueRecords() {
 		
-		List<SObject> contactsAsSObjects = SmartFactory.createSObjectList('Contact', false, 401);
+		List<SObject> contactsAsSObjects = SmartFactory.createSObjectList('Contact', false, 201);
 		insert contactsAsSObjects;
 		for (SObject s : contactsAsSObjects)
 		{
